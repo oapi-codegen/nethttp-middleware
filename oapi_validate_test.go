@@ -1,4 +1,4 @@
-package middleware
+package chimiddleware
 
 import (
 	"context"
