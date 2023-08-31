@@ -21,7 +21,7 @@ import (
 //go:embed test_spec.yaml
 var testSchema []byte
 
-func doGet(t *testing.T, mux *chi.Mux, rawURL string) *httptest.ResponseRecorder {
+func doGet(t *testing.T, mux http.Handler, rawURL string) *httptest.ResponseRecorder {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		t.Fatalf("Invalid url: %s", rawURL)
@@ -31,7 +31,7 @@ func doGet(t *testing.T, mux *chi.Mux, rawURL string) *httptest.ResponseRecorder
 	return response.Recorder
 }
 
-func doPost(t *testing.T, mux *chi.Mux, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
+func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		t.Fatalf("Invalid url: %s", rawURL)
