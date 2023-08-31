@@ -1,4 +1,4 @@
-package chimiddleware
+package gorilla
 
 import (
 	"context"
@@ -11,9 +11,11 @@ import (
 	"testing"
 
 	"github.com/deepmap/oapi-codegen/pkg/testutil"
+	middleware "github.com/oapi-codegen/nethttp-middleware"
+
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,10 +47,10 @@ func TestOapiRequestValidator(t *testing.T) {
 	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
 	require.NoError(t, err, "Error initializing swagger")
 
-	r := chi.NewRouter()
+	r := mux.NewRouter()
 
 	// register middleware
-	r.Use(OapiRequestValidator(swagger))
+	r.Use(middleware.OapiRequestValidator(swagger))
 
 	// basic cases
 	testRequestValidatorBasicFunctions(t, r)
@@ -58,11 +60,11 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
 	require.NoError(t, err, "Error initializing swagger")
 
-	r := chi.NewRouter()
+	r := mux.NewRouter()
 
 	// Set up an authenticator to check authenticated function. It will allow
 	// access to "someScope", but disallow others.
-	options := Options{
+	options := middleware.Options{
 		Options: openapi3filter.Options{
 			ExcludeRequestBody:    false,
 			ExcludeResponseBody:   false,
@@ -72,15 +74,15 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 	}
 
 	// register middleware
-	r.Use(OapiRequestValidatorWithOptions(swagger, &options))
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &options))
 
 	called := false
 
 	// Install a request handler for /resource. We want to make sure it doesn't
 	// get called.
-	r.Get("/multiparamresource", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/multiparamresource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
-	})
+	}).Methods("GET")
 
 	// Let's send a good request, it should pass
 	{
@@ -157,11 +159,11 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
 	require.NoError(t, err, "Error initializing swagger")
 
-	r := chi.NewRouter()
+	r := mux.NewRouter()
 
 	// Set up an authenticator to check authenticated function. It will allow
 	// access to "someScope", but disallow others.
-	options := Options{
+	options := middleware.Options{
 		Options: openapi3filter.Options{
 			ExcludeRequestBody:    false,
 			ExcludeResponseBody:   false,
@@ -174,15 +176,15 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 	}
 
 	// register middleware
-	r.Use(OapiRequestValidatorWithOptions(swagger, &options))
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &options))
 
 	called := false
 
 	// Install a request handler for /resource. We want to make sure it doesn't
 	// get called.
-	r.Get("/multiparamresource", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/multiparamresource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
-	})
+	}).Methods("GET")
 
 	// Let's send a good request, it should pass
 	{
@@ -259,11 +261,11 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
 	require.NoError(t, err, "Error initializing swagger")
 
-	r := chi.NewRouter()
+	r := mux.NewRouter()
 
 	// Set up an authenticator to check authenticated function. It will allow
 	// access to "someScope", but disallow others.
-	options := Options{
+	options := middleware.Options{
 		ErrorHandler: func(w http.ResponseWriter, message string, statusCode int) {
 			http.Error(w, "test: "+message, statusCode)
 		},
@@ -281,17 +283,17 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 	}
 
 	// register middleware
-	r.Use(OapiRequestValidatorWithOptions(swagger, &options))
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &options))
 
 	// basic cases
 	testRequestValidatorBasicFunctions(t, r)
 
 	called := false
 
-	r.Get("/protected_resource", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/protected_resource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
-	})
+	}).Methods("GET")
 
 	// Call a protected function to which we have access
 	{
@@ -301,10 +303,10 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 		called = false
 	}
 
-	r.Get("/protected_resource2", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/protected_resource2", func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
-	})
+	}).Methods("GET")
 	// Call a protected function to which we dont have access
 	{
 		rec := doGet(t, r, "http://deepmap.ai/protected_resource2")
@@ -313,10 +315,10 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 		called = false
 	}
 
-	r.Get("/protected_resource_401", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/protected_resource_401", func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
-	})
+	}).Methods("GET")
 	// Call a protected function without credentials
 	{
 		rec := doGet(t, r, "http://deepmap.ai/protected_resource_401")
@@ -328,15 +330,15 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 
 }
 
-func testRequestValidatorBasicFunctions(t *testing.T, r *chi.Mux) {
+func testRequestValidatorBasicFunctions(t *testing.T, r *mux.Router) {
 
 	called := false
 
 	// Install a request handler for /resource. We want to make sure it doesn't
 	// get called.
-	r.Get("/resource", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/resource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
-	})
+	}).Methods("GET")
 
 	// Let's send the request to the wrong server, this should return 404
 	{
@@ -370,10 +372,10 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *chi.Mux) {
 	}
 
 	// Add a handler for the POST message
-	r.Post("/resource", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/resource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
-	})
+	}).Methods("POST")
 
 	called = false
 	// Send a good request body
