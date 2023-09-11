@@ -1,4 +1,4 @@
-module github.com/oapi-codegen/chi-middleware
+module github.com/oapi-codegen/nethttp-middleware
 
 go 1.20
 
