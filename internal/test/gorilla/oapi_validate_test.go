@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/deepmap/oapi-codegen/pkg/testutil"
+	"github.com/oapi-codegen/testutil"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/getkin/kin-openapi/openapi3"
