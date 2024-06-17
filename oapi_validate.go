@@ -79,9 +79,10 @@ func validateRequest(r *http.Request, router routers.Router, options *Options) (
 
 	// Validate request
 	requestValidationInput := &openapi3filter.RequestValidationInput{
-		Request:    r,
-		PathParams: pathParams,
-		Route:      route,
+		Request:     r,
+		PathParams:  pathParams,
+		QueryParams: r.URL.Query(),
+		Route:       route,
 	}
 
 	if options != nil {
