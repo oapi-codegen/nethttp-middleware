@@ -72,12 +72,16 @@ func OapiRequestValidatorWithOptions(swagger *openapi3.T, options *Options) func
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
 func validateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
-	// Read and store the body, then reset for further reads
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("error reading request body: %v", err)
+	var body []byte
+	if r.Body != nil {
+		// Read and store the body, then reset for further reads
+		var err error
+		body, err = io.ReadAll(r.Body)
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("error reading request body: %v", err)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Find route
 	route, pathParams, err := router.FindRoute(r)
@@ -120,7 +124,9 @@ func validateRequest(r *http.Request, router routers.Router, options *Options) (
 	}
 
 	// Ensure that request body is reset before returning
-	r.Body = io.NopCloser(bytes.NewReader(body))
+	if body != nil {
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
 
 	return http.StatusOK, nil
 }
