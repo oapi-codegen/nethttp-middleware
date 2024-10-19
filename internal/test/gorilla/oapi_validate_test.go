@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/oapi-codegen/testutil"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/oapi-codegen/testutil"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -367,6 +367,19 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *mux.Router) {
 	{
 		rec := doGet(t, r, "http://deepmap.ai/resource?id=foo")
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.False(t, called, "Handler should not have been called")
+		called = false
+	}
+
+	// Send a request with wrong HTTP method
+	{
+		body := struct {
+			Name string `json:"name"`
+		}{
+			Name: "Marcin",
+		}
+		rec := doPost(t, r, "http://deepmap.ai/resource", body)
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 		assert.False(t, called, "Handler should not have been called")
 		called = false
 	}
