@@ -24,11 +24,12 @@ type ErrorHandler func(w http.ResponseWriter, message string, statusCode int)
 // Passes error-handling specific opts over and above the standard error handler.
 type ErrorHandlerWithOpts func(w http.ResponseWriter, message string, statusCode int, opts ErrorHandlerOpts)
 
-// ErrorHandlerArgs is used with ErrorHandlerWithOpts()
+// ErrorHandlerOpts is used with ErrorHandlerWithOpts()
 type ErrorHandlerOpts struct {
 	*http.Request
 	*routers.Route
 	context.Context
+	Error error
 }
 
 // MultiErrorHandler is called when oapi returns a MultiError type
@@ -71,6 +72,7 @@ func OapiRequestValidatorWithOptions(swagger *openapi3.T, options *Options) func
 							Context: r.Context(),
 							Request: r,
 							Route:   route,
+							Error:   err,
 						})
 						return
 					}
