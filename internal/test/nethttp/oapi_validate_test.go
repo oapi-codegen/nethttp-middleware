@@ -48,21 +48,21 @@ func use(r *http.ServeMux, mw func(next http.Handler) http.Handler) http.Handler
 }
 
 func TestOapiRequestValidator(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
 	// create middleware
-	mw := middleware.OapiRequestValidator(swagger)
+	mw := middleware.OapiRequestValidator(spec)
 
 	// basic cases
 	testRequestValidatorBasicFunctions(t, r, mw)
 }
 
 func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	// Set up an authenticator to check authenticated function. It will allow
 	// access to "someScope", but disallow others.
@@ -91,7 +91,7 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 	})
 
 	// register middleware
-	mw := middleware.OapiRequestValidatorWithOptions(swagger, &options)
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &options)
 	server := mw(r)
 
 	// Let's send a good request, it should pass
@@ -166,8 +166,8 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 }
 
 func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
@@ -199,7 +199,7 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 	})
 
 	// register middleware
-	server := use(r, middleware.OapiRequestValidatorWithOptions(swagger, &options))
+	server := use(r, middleware.OapiRequestValidatorWithOptions(spec, &options))
 
 	// Let's send a good request, it should pass
 	{
@@ -273,8 +273,8 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 }
 
 func TestOapiRequestValidatorWithOptions(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
@@ -298,7 +298,7 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 	}
 
 	// register middleware
-	mw := middleware.OapiRequestValidatorWithOptions(swagger, &options)
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &options)
 	server := use(r, mw)
 
 	// basic cases
