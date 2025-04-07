@@ -1,6 +1,10 @@
-// Package middleware implements middleware function for net/http compatible router
-// which validates incoming HTTP requests to make sure that they conform to the given OAPI 3.0 specification.
-// When OAPI validation fails on the request, we return an HTTP/400.
+// Provide HTTP middleware functionality to validate that incoming requests conform to a given OpenAPI 3.x specification.
+//
+// This provides middleware for any `net/http` conforming HTTP Server.
+//
+// This package is a lightweight wrapper over https://pkg.go.dev/github.com/getkin/kin-openapi/openapi3filter from https://pkg.go.dev/github.com/getkin/kin-openapi.
+//
+// This is _intended_ to be used with code that's generated through https://pkg.go.dev/github.com/oapi-codegen/oapi-codegen, but should work otherwise.
 package nethttpmiddleware
 
 import (
