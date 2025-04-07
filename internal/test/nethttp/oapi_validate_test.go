@@ -1,8 +1,10 @@
 package gorilla
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -10,7 +12,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/oapi-codegen/testutil"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -28,8 +29,16 @@ func doGet(t *testing.T, mux http.Handler, rawURL string) *httptest.ResponseReco
 		t.Fatalf("Invalid url: %s", rawURL)
 	}
 
-	response := testutil.NewRequest().Get(u.RequestURI()).WithHost(u.Host).WithAcceptJson().GoWithHTTPHandler(t, mux)
-	return response.Recorder
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	require.NoError(t, err)
+
+	req.Header.Set("accept", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
 }
 
 func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
@@ -38,8 +47,19 @@ func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{})
 		t.Fatalf("Invalid url: %s", rawURL)
 	}
 
-	response := testutil.NewRequest().Post(u.RequestURI()).WithHost(u.Host).WithJsonBody(jsonBody).GoWithHTTPHandler(t, mux)
-	return response.Recorder
+	data, err := json.Marshal(jsonBody)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	require.NoError(t, err)
+
+	req.Header.Set("content-type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
 }
 
 // use wraps a given http.ServeMux with middleware for execution

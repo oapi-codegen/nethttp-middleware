@@ -7,7 +7,6 @@ replace github.com/oapi-codegen/nethttp-middleware => ../../../
 require (
 	github.com/getkin/kin-openapi v0.124.0
 	github.com/oapi-codegen/nethttp-middleware v0.0.0-00010101000000-000000000000
-	github.com/oapi-codegen/testutil v1.0.0
 	github.com/stretchr/testify v1.8.4
 )
 
