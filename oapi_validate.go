@@ -31,18 +31,18 @@ type Options struct {
 	SilenceServersWarning bool
 }
 
-// OapiRequestValidator Creates middleware to validate request by swagger spec.
-func OapiRequestValidator(swagger *openapi3.T) func(next http.Handler) http.Handler {
-	return OapiRequestValidatorWithOptions(swagger, nil)
+// OapiRequestValidator Creates middleware to validate request by OpenAPI spec.
+func OapiRequestValidator(spec *openapi3.T) func(next http.Handler) http.Handler {
+	return OapiRequestValidatorWithOptions(spec, nil)
 }
 
-// OapiRequestValidatorWithOptions Creates middleware to validate request by swagger spec.
-func OapiRequestValidatorWithOptions(swagger *openapi3.T, options *Options) func(next http.Handler) http.Handler {
-	if swagger.Servers != nil && (options == nil || !options.SilenceServersWarning) {
+// OapiRequestValidatorWithOptions Creates middleware to validate request by OpenAPI spec.
+func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(next http.Handler) http.Handler {
+	if spec.Servers != nil && (options == nil || !options.SilenceServersWarning) {
 		log.Println("WARN: OapiRequestValidatorWithOptions called with an OpenAPI spec that has `Servers` set. This may lead to an HTTP 400 with `no matching operation was found` when sending a valid request, as the validator performs `Host` header validation. If you're expecting `Host` header validation, you can silence this warning by setting `Options.SilenceServersWarning = true`. See https://github.com/deepmap/oapi-codegen/issues/882 for more information.")
 	}
 
-	router, err := gorillamux.NewRouter(swagger)
+	router, err := gorillamux.NewRouter(spec)
 	if err != nil {
 		panic(err)
 	}
