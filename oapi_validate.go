@@ -1,6 +1,4 @@
-// Package middleware implements middleware function for net/http compatible router
-// which validates incoming HTTP requests to make sure that they conform to the given OAPI 3.0 specification.
-// When OAPI validation fails on the request, we return an HTTP/400.
+// Provide HTTP middleware functionality, for a `net/http` compatible router, to validate that incoming requests conform to a given OpenAPI 3.x specification.
 package nethttpmiddleware
 
 import (
