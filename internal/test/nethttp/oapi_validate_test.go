@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/oapi-codegen/testutil"
 	middleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/oapi-codegen/testutil"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -39,6 +39,16 @@ func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{})
 	}
 
 	response := testutil.NewRequest().Post(u.RequestURI()).WithHost(u.Host).WithJsonBody(jsonBody).GoWithHTTPHandler(t, mux)
+	return response.Recorder
+}
+
+func doPatch(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Invalid url: %s", rawURL)
+	}
+
+	response := testutil.NewRequest().Patch(u.RequestURI()).WithHost(u.Host).WithJsonBody(jsonBody).GoWithHTTPHandler(t, mux)
 	return response.Recorder
 }
 
@@ -409,6 +419,19 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *http.ServeMux, mw func(
 	{
 		rec := doGet(t, server, "http://deepmap.ai/resource?id=foo")
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.False(t, called, "Handler should not have been called")
+		called = false
+	}
+
+	// Send a request with wrong method
+	{
+		body := struct {
+			Name string `json:"name"`
+		}{
+			Name: "Marcin",
+		}
+		rec := doPatch(t, server, "http://deepmap.ai/resource", body)
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 		assert.False(t, called, "Handler should not have been called")
 		called = false
 	}
