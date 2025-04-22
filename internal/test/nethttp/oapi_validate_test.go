@@ -387,11 +387,12 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *http.ServeMux, mw func(
 	// Install a request handler for /resource. We want to make sure it doesn't
 	// get called.
 	r.HandleFunc("/resource", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
 			called = true
 			w.WriteHeader(http.StatusOK)
 			return
-		} else if r.Method == http.MethodPost {
+		case http.MethodPost:
 			called = true
 			w.WriteHeader(http.StatusNoContent)
 			return
