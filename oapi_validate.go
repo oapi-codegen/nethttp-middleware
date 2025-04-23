@@ -23,24 +23,33 @@ import (
 // ErrorHandler is called when there is an error in validation
 type ErrorHandler func(w http.ResponseWriter, message string, statusCode int)
 
-// MultiErrorHandler is called when oapi returns a MultiError type
+// MultiErrorHandler is called when the OpenAPI filter returns an openapi3.MultiError (https://pkg.go.dev/github.com/getkin/kin-openapi/openapi3#MultiError)
 type MultiErrorHandler func(openapi3.MultiError) (int, error)
 
-// Options to customize request validation, openapi3filter specified options will be passed through.
+// Options allows configuring the OapiRequestValidator.
 type Options struct {
-	Options           openapi3filter.Options
-	ErrorHandler      ErrorHandler
+	// Options contains any configuration for the underlying `openapi3filter`
+	Options openapi3filter.Options
+	// ErrorHandler is called when a validation error occurs.
+	//
+	// If not provided, `http.Error` will be called
+	ErrorHandler ErrorHandler
+	// MultiErrorHandler is called when there is an openapi3.MultiError (https://pkg.go.dev/github.com/getkin/kin-openapi/openapi3#MultiError) returned by the `openapi3filter`.
+	//
+	// If not provided `defaultMultiErrorHandler` will be used.
 	MultiErrorHandler MultiErrorHandler
 	// SilenceServersWarning allows silencing a warning for https://github.com/deepmap/oapi-codegen/issues/882 that reports when an OpenAPI spec has `spec.Servers != nil`
 	SilenceServersWarning bool
 }
 
-// OapiRequestValidator Creates middleware to validate request by OpenAPI spec.
+// OapiRequestValidator Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, with a default set of configuration.
 func OapiRequestValidator(spec *openapi3.T) func(next http.Handler) http.Handler {
 	return OapiRequestValidatorWithOptions(spec, nil)
 }
 
-// OapiRequestValidatorWithOptions Creates middleware to validate request by OpenAPI spec.
+// OapiRequestValidatorWithOptions Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, allowing explicit configuration.
+//
+// NOTE that this may panic if the OpenAPI spec isn't valid, or if it cannot be used to create the middleware
 func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(next http.Handler) http.Handler {
 	if spec.Servers != nil && (options == nil || !options.SilenceServersWarning) {
 		log.Println("WARN: OapiRequestValidatorWithOptions called with an OpenAPI spec that has `Servers` set. This may lead to an HTTP 400 with `no matching operation was found` when sending a valid request, as the validator performs `Host` header validation. If you're expecting `Host` header validation, you can silence this warning by setting `Options.SilenceServersWarning = true`. See https://github.com/deepmap/oapi-codegen/issues/882 for more information.")
