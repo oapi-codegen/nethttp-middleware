@@ -295,7 +295,7 @@ paths:
 	}
 
 	errorHandlerFunc := func(w http.ResponseWriter, message string, statusCode int) {
-		fmt.Printf("ErrorHandler: An HTTP %d was returned by the middleware with error message: request body has an error: value is required but missing\n", statusCode)
+		fmt.Printf("ErrorHandler: An HTTP %d was returned by the middleware with error message: %s\n", statusCode, message)
 		http.Error(w, "This was rewritten by the ErrorHandler", statusCode)
 	}
 
