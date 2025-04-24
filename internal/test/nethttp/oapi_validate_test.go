@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	middleware "github.com/oapi-codegen/nethttp-middleware"
-	"github.com/oapi-codegen/testutil"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -69,8 +68,19 @@ func doPatch(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}
 		t.Fatalf("Invalid url: %s", rawURL)
 	}
 
-	response := testutil.NewRequest().Patch(u.RequestURI()).WithHost(u.Host).WithJsonBody(jsonBody).GoWithHTTPHandler(t, mux)
-	return response.Recorder
+	data, err := json.Marshal(jsonBody)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPatch, u.String(), bytes.NewReader(data))
+	require.NoError(t, err)
+
+	req.Header.Set("content-type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
 }
 
 // use wraps a given http.ServeMux with middleware for execution
