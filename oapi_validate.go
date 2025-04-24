@@ -68,19 +68,19 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			// validate request
-			if statusCode, err := validateRequest(r, router, options); err != nil {
-				if options != nil && options.ErrorHandler != nil {
-					options.ErrorHandler(w, err.Error(), statusCode)
-				} else {
-					http.Error(w, err.Error(), statusCode)
-				}
+			statusCode, err := validateRequest(r, router, options)
+			if err == nil {
+				// serve
+				next.ServeHTTP(w, r)
 				return
 			}
 
-			// serve
-			next.ServeHTTP(w, r)
+			if options != nil && options.ErrorHandler != nil {
+				options.ErrorHandler(w, err.Error(), statusCode)
+			} else {
+				http.Error(w, err.Error(), statusCode)
+			}
 		})
 	}
 
