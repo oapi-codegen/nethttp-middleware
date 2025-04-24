@@ -1,8 +1,10 @@
 package gorilla
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -28,8 +30,16 @@ func doGet(t *testing.T, mux http.Handler, rawURL string) *httptest.ResponseReco
 		t.Fatalf("Invalid url: %s", rawURL)
 	}
 
-	response := testutil.NewRequest().Get(u.RequestURI()).WithHost(u.Host).WithAcceptJson().GoWithHTTPHandler(t, mux)
-	return response.Recorder
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	require.NoError(t, err)
+
+	req.Header.Set("accept", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
 }
 
 func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
@@ -38,8 +48,19 @@ func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{})
 		t.Fatalf("Invalid url: %s", rawURL)
 	}
 
-	response := testutil.NewRequest().Post(u.RequestURI()).WithHost(u.Host).WithJsonBody(jsonBody).GoWithHTTPHandler(t, mux)
-	return response.Recorder
+	data, err := json.Marshal(jsonBody)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	require.NoError(t, err)
+
+	req.Header.Set("content-type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
 }
 
 func doPatch(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
@@ -58,21 +79,21 @@ func use(r *http.ServeMux, mw func(next http.Handler) http.Handler) http.Handler
 }
 
 func TestOapiRequestValidator(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
 	// create middleware
-	mw := middleware.OapiRequestValidator(swagger)
+	mw := middleware.OapiRequestValidator(spec)
 
 	// basic cases
 	testRequestValidatorBasicFunctions(t, r, mw)
 }
 
 func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	// Set up an authenticator to check authenticated function. It will allow
 	// access to "someScope", but disallow others.
@@ -101,7 +122,7 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 	})
 
 	// register middleware
-	mw := middleware.OapiRequestValidatorWithOptions(swagger, &options)
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &options)
 	server := mw(r)
 
 	// Let's send a good request, it should pass
@@ -176,8 +197,8 @@ func TestOapiRequestValidatorWithOptionsMultiError(t *testing.T) {
 }
 
 func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
@@ -209,7 +230,7 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 	})
 
 	// register middleware
-	server := use(r, middleware.OapiRequestValidatorWithOptions(swagger, &options))
+	server := use(r, middleware.OapiRequestValidatorWithOptions(spec, &options))
 
 	// Let's send a good request, it should pass
 	{
@@ -283,8 +304,8 @@ func TestOapiRequestValidatorWithOptionsMultiErrorAndCustomHandler(t *testing.T)
 }
 
 func TestOapiRequestValidatorWithOptions(t *testing.T) {
-	swagger, err := openapi3.NewLoader().LoadFromData(testSchema)
-	require.NoError(t, err, "Error initializing swagger")
+	spec, err := openapi3.NewLoader().LoadFromData(testSchema)
+	require.NoError(t, err, "Error initializing OpenAPI spec")
 
 	r := http.NewServeMux()
 
@@ -308,7 +329,7 @@ func TestOapiRequestValidatorWithOptions(t *testing.T) {
 	}
 
 	// register middleware
-	mw := middleware.OapiRequestValidatorWithOptions(swagger, &options)
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &options)
 	server := use(r, mw)
 
 	// basic cases
@@ -377,11 +398,12 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *http.ServeMux, mw func(
 	// Install a request handler for /resource. We want to make sure it doesn't
 	// get called.
 	r.HandleFunc("/resource", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
 			called = true
 			w.WriteHeader(http.StatusOK)
 			return
-		} else if r.Method == http.MethodPost {
+		case http.MethodPost:
 			called = true
 			w.WriteHeader(http.StatusNoContent)
 			return
