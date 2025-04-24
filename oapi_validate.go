@@ -70,10 +70,13 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 				return
 			}
 
-			if options != nil && options.ErrorHandler != nil {
-				options.ErrorHandler(w, err.Error(), statusCode)
-			} else {
+			if options == nil {
 				http.Error(w, err.Error(), statusCode)
+				return
+			}
+
+			if options.ErrorHandler != nil {
+				options.ErrorHandler(w, err.Error(), statusCode)
 			}
 		})
 	}
