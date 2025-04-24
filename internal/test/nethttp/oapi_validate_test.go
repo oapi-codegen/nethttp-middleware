@@ -62,6 +62,27 @@ func doPost(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{})
 	return rr
 }
 
+func doPatch(t *testing.T, mux http.Handler, rawURL string, jsonBody interface{}) *httptest.ResponseRecorder {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Invalid url: %s", rawURL)
+	}
+
+	data, err := json.Marshal(jsonBody)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPatch, u.String(), bytes.NewReader(data))
+	require.NoError(t, err)
+
+	req.Header.Set("content-type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	mux.ServeHTTP(rr, req)
+
+	return rr
+}
+
 // use wraps a given http.ServeMux with middleware for execution
 func use(r *http.ServeMux, mw func(next http.Handler) http.Handler) http.Handler {
 	return mw(r)
@@ -430,6 +451,19 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *http.ServeMux, mw func(
 	{
 		rec := doGet(t, server, "http://deepmap.ai/resource?id=foo")
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.False(t, called, "Handler should not have been called")
+		called = false
+	}
+
+	// Send a request with wrong method
+	{
+		body := struct {
+			Name string `json:"name"`
+		}{
+			Name: "Marcin",
+		}
+		rec := doPatch(t, server, "http://deepmap.ai/resource", body)
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 		assert.False(t, called, "Handler should not have been called")
 		called = false
 	}

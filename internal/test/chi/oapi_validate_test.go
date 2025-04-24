@@ -391,6 +391,19 @@ func testRequestValidatorBasicFunctions(t *testing.T, r *chi.Mux) {
 		called = false
 	}
 
+	// Send a request with wrong HTTP method
+	{
+		body := struct {
+			Name string `json:"name"`
+		}{
+			Name: "Marcin",
+		}
+		rec := doPost(t, r, "http://deepmap.ai/resource", body)
+		assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+		assert.False(t, called, "Handler should not have been called")
+		called = false
+	}
+
 	// Add a handler for the POST message
 	r.Post("/resource", func(w http.ResponseWriter, r *http.Request) {
 		called = true
