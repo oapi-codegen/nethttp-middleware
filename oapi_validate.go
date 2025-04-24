@@ -40,6 +40,8 @@ type Options struct {
 	MultiErrorHandler MultiErrorHandler
 	// SilenceServersWarning allows silencing a warning for https://github.com/deepmap/oapi-codegen/issues/882 that reports when an OpenAPI spec has `spec.Servers != nil`
 	SilenceServersWarning bool
+	// DoNotValidateServers ensures that there is no Host validation performed (see `SilenceServersWarning` and https://github.com/deepmap/oapi-codegen/issues/882 for more details)
+	DoNotValidateServers bool
 }
 
 // OapiRequestValidator Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, with a default set of configuration.
@@ -51,6 +53,10 @@ func OapiRequestValidator(spec *openapi3.T) func(next http.Handler) http.Handler
 //
 // NOTE that this may panic if the OpenAPI spec isn't valid, or if it cannot be used to create the middleware
 func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(next http.Handler) http.Handler {
+	if options != nil && options.DoNotValidateServers {
+		spec.Servers = nil
+	}
+
 	if spec.Servers != nil && (options == nil || !options.SilenceServersWarning) {
 		log.Println("WARN: OapiRequestValidatorWithOptions called with an OpenAPI spec that has `Servers` set. This may lead to an HTTP 400 with `no matching operation was found` when sending a valid request, as the validator performs `Host` header validation. If you're expecting `Host` header validation, you can silence this warning by setting `Options.SilenceServersWarning = true`. See https://github.com/deepmap/oapi-codegen/issues/882 for more information.")
 	}
