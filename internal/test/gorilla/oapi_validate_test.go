@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	middleware "github.com/oapi-codegen/nethttp-middleware"
-	"github.com/oapi-codegen/testutil"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
