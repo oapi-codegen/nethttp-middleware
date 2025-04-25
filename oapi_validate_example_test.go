@@ -954,11 +954,9 @@ paths:
 
 	fmt.Printf("Received an HTTP %d response. Expected HTTP 204\n", rr.Code)
 	logResponseBody(rr)
-	fmt.Println()
 
 	// Output:
 	// # A request that is well-formed is passed through to the Handler
 	// POST /public-api/resource was called
 	// Received an HTTP 204 response. Expected HTTP 204
-	//
 }
