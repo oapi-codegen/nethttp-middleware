@@ -906,6 +906,7 @@ paths:
 
 	router := http.NewServeMux()
 
+	// This should be treated as if it's being called with POST /resource
 	router.HandleFunc("/public-api/v1/resource", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("%s /public-api/v1/resource was called\n", r.Method)
 
