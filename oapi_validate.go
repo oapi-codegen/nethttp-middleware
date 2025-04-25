@@ -103,6 +103,9 @@ type Options struct {
 	SilenceServersWarning bool
 	// DoNotValidateServers ensures that there is no Host validation performed (see `SilenceServersWarning` and https://github.com/deepmap/oapi-codegen/issues/882 for more details)
 	DoNotValidateServers bool
+	// Prefix allows (optionally) trimming a prefix from the API path.
+	// This may be useful if your API is routed to an internal path that is different from the OpenAPI specification.
+	Prefix string
 }
 
 // OapiRequestValidator Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, with a default set of configuration.
@@ -159,6 +162,11 @@ func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseW
 // Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
 func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
 	// Find route
+
+	r.RequestURI = strings.TrimPrefix(r.RequestURI, options.Prefix)
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, options.Prefix)
+	r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, options.Prefix)
+
 	route, pathParams, err := router.FindRoute(r)
 	if err != nil {
 		errOpts := ErrorHandlerOpts{
@@ -222,6 +230,9 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
 func validateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
+
+	r.RequestURI = strings.TrimPrefix(r.RequestURI, options.Prefix)
+	r.URL.Path = strings.TrimPrefix(r.URL.Path, options.Prefix)
 
 	// Find route
 	route, pathParams, err := router.FindRoute(r)
