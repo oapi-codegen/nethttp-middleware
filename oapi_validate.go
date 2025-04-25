@@ -211,7 +211,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 		// we don't want to crash the server, so handle the unexpected error.
 		// return http.StatusInternalServerError,
 		theErr = fmt.Errorf("error validating route: %w", e)
-		errOpts.StatusCode = http.StatusUnauthorized
+		errOpts.StatusCode = http.StatusInternalServerError
 	}
 
 	options.ErrorHandlerWithOpts(r.Context(), theErr, w, r, errOpts)
