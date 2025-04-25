@@ -469,9 +469,7 @@ components:
 		return fmt.Errorf("this check always fails - don't let anyone in!")
 	}
 
-	errorHandlerFunc := func(ctx context.Context, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
-		err := opts.Error
-
+	errorHandlerFunc := func(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
 		if opts.MatchedRoute == nil {
 			fmt.Printf("ErrorHandlerWithOpts: An HTTP %d was returned by the middleware with error message: %s\n", opts.StatusCode, err.Error())
 
@@ -716,9 +714,7 @@ paths:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
-	errorHandlerFunc := func(ctx context.Context, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
-		err := opts.Error
-
+	errorHandlerFunc := func(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
 		if opts.MatchedRoute == nil {
 			fmt.Printf("ErrorHandlerWithOpts: An HTTP %d was returned by the middleware with error message: %s\n", opts.StatusCode, err.Error())
 
