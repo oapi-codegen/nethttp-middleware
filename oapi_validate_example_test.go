@@ -944,7 +944,7 @@ paths:
 	data, err := json.Marshal(body)
 	must(err)
 
-	req, err := http.NewRequest(http.MethodPost, "/public-api/resource", bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, "/public-api/v1/resource", bytes.NewReader(data))
 	must(err)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -957,6 +957,6 @@ paths:
 
 	// Output:
 	// # A request that is well-formed is passed through to the Handler
-	// POST /public-api/resource was called
+	// POST /public-api/v1/resource was called
 	// Received an HTTP 204 response. Expected HTTP 204
 }
