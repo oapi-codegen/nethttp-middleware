@@ -2,6 +2,8 @@ name: Build project
 on: [ push, pull_request ]
 jobs:
   build:
+    # allow triggering on a push to the repo, or a PR build, not both events
+    if: github.event_name == 'push' || github.event.pull_request.head.sha != github.sha
     name: Build
     runs-on: ubuntu-latest
     strategy:
