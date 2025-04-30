@@ -9,9 +9,11 @@ jobs:
       # perform matrix testing to give us an earlier insight into issues with different versions of supported major versions of Go
       matrix:
         version:
+        # versions of Go that this module can still be built with (and therefore are "supported" by this project)
         - "1.20"
         - "1.21"
         - "1.22"
+        # actively supported versions of Go
         - "1.23"
         - "1.24"
     steps:
