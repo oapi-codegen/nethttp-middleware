@@ -10,7 +10,7 @@ help:
 	@echo "    tidy         tidy go mod"
 
 $(GOBIN)/golangci-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) v2.1.6
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) v2.3.0
 
 .PHONY: tools
 tools: $(GOBIN)/golangci-lint
