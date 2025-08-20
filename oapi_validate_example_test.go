@@ -839,3 +839,121 @@ paths:
 	// Received an HTTP 400 response. Expected HTTP 400
 	// Response body: There was a bad request
 }
+
+// In the case that your public OpenAPI spec documents an API which does /not/ match your internal API endpoint setup, you may want to set the `Prefix` option to allow rewriting paths
+func ExampleOapiRequestValidatorWithOptions_withPrefix() {
+	rawSpec := `
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: TestServer
+servers:
+  - url: http://example.com/
+paths:
+  /resource:
+    post:
+      operationId: createResource
+      responses:
+        '204':
+          description: No content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                name:
+                  type: string
+              additionalProperties: false
+`
+
+	must := func(err error) {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	use := func(r *http.ServeMux, middlewares ...func(next http.Handler) http.Handler) http.Handler {
+		var s http.Handler
+		s = r
+
+		for _, mw := range middlewares {
+			s = mw(s)
+		}
+
+		return s
+	}
+
+	logResponseBody := func(rr *httptest.ResponseRecorder) {
+		if rr.Result().Body != nil {
+			data, _ := io.ReadAll(rr.Result().Body)
+			if len(data) > 0 {
+				fmt.Printf("Response body: %s", data)
+			}
+		}
+	}
+
+	spec, err := openapi3.NewLoader().LoadFromData([]byte(rawSpec))
+	must(err)
+
+	// NOTE that we need to make sure that the `Servers` aren't set, otherwise the OpenAPI validation middleware will validate that the `Host` header (of incoming requests) are targeting known `Servers` in the OpenAPI spec
+	// See also: Options#SilenceServersWarning
+	spec.Servers = nil
+
+	router := http.NewServeMux()
+
+	// This should be treated as if it's being called with POST /resource
+	router.HandleFunc("/public-api/v1/resource", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s /public-api/v1/resource was called\n", r.Method)
+
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
+	router.HandleFunc("/internal-api/v2/resource", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s /internal-api/v2/resource was called\n", r.Method)
+
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
+	// create middleware
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+		Options: openapi3filter.Options{
+			// make sure that multiple errors in a given request are returned
+			MultiError: true,
+		},
+		Prefix: "/public-api/v1/",
+	})
+
+	// then wire it in
+	server := use(router, mw)
+
+	// ================================================================================
+	fmt.Println("# A request that is well-formed is passed through to the Handler")
+	body := map[string]string{
+		"name": "Jamie",
+	}
+
+	data, err := json.Marshal(body)
+	must(err)
+
+	req, err := http.NewRequest(http.MethodPost, "/public-api/v1/resource", bytes.NewReader(data))
+	must(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	fmt.Printf("Received an HTTP %d response. Expected HTTP 204\n", rr.Code)
+	logResponseBody(rr)
+
+	// Output:
+	// # A request that is well-formed is passed through to the Handler
+	// POST /public-api/v1/resource was called
+	// Received an HTTP 204 response. Expected HTTP 204
+}
