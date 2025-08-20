@@ -156,13 +156,25 @@ func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseW
 	errorHandler(w, err.Error(), statusCode)
 }
 
-// Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
-func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
-	// Find route
+func makeRequestForValidation(r *http.Request, options *Options) *http.Request {
+	if options == nil || options.Prefix == "" {
+		return r
+	}
+
+	r = r.Clone(r.Context())
 
 	r.RequestURI = strings.TrimPrefix(r.RequestURI, options.Prefix)
 	r.URL.Path = strings.TrimPrefix(r.URL.Path, options.Prefix)
 	r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, options.Prefix)
+
+	return r
+}
+
+// Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
+func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
+	// Find route
+
+	r = makeRequestForValidation(r, options)
 
 	route, pathParams, err := router.FindRoute(r)
 	if err != nil {
@@ -228,9 +240,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
 func validateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
-
-	r.RequestURI = strings.TrimPrefix(r.RequestURI, options.Prefix)
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, options.Prefix)
+	r = makeRequestForValidation(r, options)
 
 	// Find route
 	route, pathParams, err := router.FindRoute(r)

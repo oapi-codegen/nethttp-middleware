@@ -926,7 +926,7 @@ paths:
 			// make sure that multiple errors in a given request are returned
 			MultiError: true,
 		},
-		Prefix: "/public-api/v1/",
+		Prefix: "/public-api/v1",
 	})
 
 	// then wire it in
