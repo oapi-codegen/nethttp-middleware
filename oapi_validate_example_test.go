@@ -839,3 +839,145 @@ paths:
 	// Received an HTTP 400 response. Expected HTTP 400
 	// Response body: There was a bad request
 }
+
+func ExampleOapiRequestValidatorWithOptions_withSkipper() {
+	rawSpec := `
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: TestServer
+servers:
+  - url: http://example.com/
+paths:
+  # we also have a /healthz, but it's not externally documented, so the middleware CANNOT run against it, or it'll block requests
+  /resource:
+    post:
+      operationId: createResource
+      responses:
+        '204':
+          description: No content
+      requestBody:
+        required: true
+        content:
+          text/plain: {}
+`
+
+	must := func(err error) {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	use := func(r *http.ServeMux, middlewares ...func(next http.Handler) http.Handler) http.Handler {
+		var s http.Handler
+		s = r
+
+		for _, mw := range middlewares {
+			s = mw(s)
+		}
+
+		return s
+	}
+
+	logResponseBody := func(rr *httptest.ResponseRecorder) {
+		if rr.Result().Body != nil {
+			data, _ := io.ReadAll(rr.Result().Body)
+			if len(data) > 0 {
+				fmt.Printf("Response body: %s", data)
+			}
+		}
+	}
+
+	spec, err := openapi3.NewLoader().LoadFromData([]byte(rawSpec))
+	must(err)
+
+	// NOTE that we need to make sure that the `Servers` aren't set, otherwise the OpenAPI validation middleware will validate that the `Host` header (of incoming requests) are targeting known `Servers` in the OpenAPI spec
+	// See also: Options#SilenceServersWarning
+	spec.Servers = nil
+
+	router := http.NewServeMux()
+
+	router.HandleFunc("/resource", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("%s /resource was called\n", r.Method)
+
+		if r.Method == http.MethodPost {
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			fmt.Printf("Request body: %s\n", data)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+
+	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	authenticationFunc := func(ctx context.Context, ai *openapi3filter.AuthenticationInput) error {
+		fmt.Printf("`AuthenticationFunc` was called for securitySchemeName=%s\n", ai.SecuritySchemeName)
+		return fmt.Errorf("this check always fails - don't let anyone in!")
+	}
+
+	skipperFunc := func(r *http.Request) bool {
+		// always consume the request body, because we're not following best practices
+		_, _ = io.ReadAll(r.Body)
+
+		// skip the undocumented healthcheck endpoint
+		if r.URL.Path == "/healthz" {
+			return true
+		}
+
+		return false
+	}
+
+	// create middleware
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: authenticationFunc,
+		},
+		Skipper: skipperFunc,
+	})
+
+	// then wire it in
+	server := use(router, mw)
+
+	// ================================================================================
+	fmt.Println("# A request that is made to the undocumented healthcheck endpoint does not get validated")
+
+	req, err := http.NewRequest(http.MethodGet, "/healthz", http.NoBody)
+	must(err)
+
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	fmt.Printf("Received an HTTP %d response. Expected HTTP 200\n", rr.Code)
+	logResponseBody(rr)
+
+	// ================================================================================
+	fmt.Println("# The skipper cannot consume the request body")
+
+	req, err = http.NewRequest(http.MethodPost, "/resource", bytes.NewReader([]byte("Hello there")))
+	must(err)
+	req.Header.Set("Content-Type", "text/plain")
+
+	rr = httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	fmt.Printf("Received an HTTP %d response. Expected HTTP 204\n", rr.Code)
+	logResponseBody(rr)
+
+	// Output:
+	// # A request that is made to the undocumented healthcheck endpoint does not get validated
+	// Received an HTTP 200 response. Expected HTTP 200
+	// # The skipper cannot consume the request body
+	// POST /resource was called
+	// Request body: Hello there
+	// Received an HTTP 204 response. Expected HTTP 204
+}
