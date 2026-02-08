@@ -7,6 +7,4 @@ permissions:
   contents: read
 jobs:
   build:
-    uses: oapi-codegen/actions/.github/workflows/ci.yml@a4ae25b391bf6689acc6983e1e801237d8d515fc # v0.3.0
-    with:
-      excluding_versions: '["1.20", "1.21"]'
+    uses: oapi-codegen/actions/.github/workflows/ci.yml@b9f2c274c1c631e648931dbbcc1942c2b2027837 # v0.4.0
