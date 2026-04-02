@@ -107,6 +107,9 @@ type Options struct {
 	SilenceServersWarning bool
 	// DoNotValidateServers ensures that there is no Host validation performed (see `SilenceServersWarning` and https://github.com/deepmap/oapi-codegen/issues/882 for more details)
 	DoNotValidateServers bool
+	// Prefix allows (optionally) trimming a prefix from the API path.
+	// This may be useful if your API is routed to an internal path that is different from the OpenAPI specification.
+	Prefix string
 
 	// Skipper allows writing a function that runs before any middleware and determines whether the given request should skip any validation middleware
 	Skipper Skipper
@@ -188,10 +191,53 @@ func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseW
 	errorHandler(w, err.Error(), statusCode)
 }
 
+func makeRequestForValidation(r *http.Request, options *Options) *http.Request {
+	if options == nil || options.Prefix == "" {
+		return r
+	}
+
+	// Only strip the prefix when it matches on a path segment boundary:
+	// the path must equal the prefix exactly, or the character immediately
+	// after the prefix must be '/'.
+	if !hasPathPrefix(r.URL.Path, options.Prefix) {
+		return r
+	}
+
+	r = r.Clone(r.Context())
+
+	r.RequestURI = stripPrefix(r.RequestURI, options.Prefix)
+	r.URL.Path = stripPrefix(r.URL.Path, options.Prefix)
+	if r.URL.RawPath != "" {
+		r.URL.RawPath = stripPrefix(r.URL.RawPath, options.Prefix)
+	}
+
+	return r
+}
+
+// hasPathPrefix reports whether path starts with prefix on a segment boundary.
+func hasPathPrefix(path, prefix string) bool {
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	// The prefix matches if the path equals the prefix exactly, or
+	// the next character is a '/'.
+	return len(path) == len(prefix) || path[len(prefix)] == '/'
+}
+
+// stripPrefix removes prefix from s and returns the result.
+// If s does not start with prefix it is returned unchanged.
+func stripPrefix(s, prefix string) string {
+	return strings.TrimPrefix(s, prefix)
+}
+
 // Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
 func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
+	// Build a (possibly prefix-stripped) request for validation, but keep
+	// the original so the downstream handler sees the un-modified path.
+	validationReq := makeRequestForValidation(r, options)
+
 	// Find route
-	route, pathParams, err := router.FindRoute(r)
+	route, pathParams, err := router.FindRoute(validationReq)
 	if err != nil {
 		errOpts := ErrorHandlerOpts{
 			// MatchedRoute will be nil, as we've not matched a route we know about
@@ -212,7 +258,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 
 	// Validate request
 	requestValidationInput := &openapi3filter.RequestValidationInput{
-		Request:    r,
+		Request:    validationReq,
 		PathParams: pathParams,
 		Route:      route,
 	}
@@ -221,9 +267,9 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 		requestValidationInput.Options = &options.Options
 	}
 
-	err = openapi3filter.ValidateRequest(r.Context(), requestValidationInput)
+	err = openapi3filter.ValidateRequest(validationReq.Context(), requestValidationInput)
 	if err == nil {
-		// it's a valid request, so serve it
+		// it's a valid request, so serve it with the original request
 		next.ServeHTTP(w, r)
 		return
 	}
@@ -255,6 +301,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
 func validateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
+	r = makeRequestForValidation(r, options)
 
 	// Find route
 	route, pathParams, err := router.FindRoute(r)
