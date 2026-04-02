@@ -161,22 +161,48 @@ func makeRequestForValidation(r *http.Request, options *Options) *http.Request {
 		return r
 	}
 
+	// Only strip the prefix when it matches on a path segment boundary:
+	// the path must equal the prefix exactly, or the character immediately
+	// after the prefix must be '/'.
+	if !hasPathPrefix(r.URL.Path, options.Prefix) {
+		return r
+	}
+
 	r = r.Clone(r.Context())
 
-	r.RequestURI = strings.TrimPrefix(r.RequestURI, options.Prefix)
-	r.URL.Path = strings.TrimPrefix(r.URL.Path, options.Prefix)
-	r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, options.Prefix)
+	r.RequestURI = stripPrefix(r.RequestURI, options.Prefix)
+	r.URL.Path = stripPrefix(r.URL.Path, options.Prefix)
+	if r.URL.RawPath != "" {
+		r.URL.RawPath = stripPrefix(r.URL.RawPath, options.Prefix)
+	}
 
 	return r
 }
 
+// hasPathPrefix reports whether path starts with prefix on a segment boundary.
+func hasPathPrefix(path, prefix string) bool {
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	// The prefix matches if the path equals the prefix exactly, or
+	// the next character is a '/'.
+	return len(path) == len(prefix) || path[len(prefix)] == '/'
+}
+
+// stripPrefix removes prefix from s and returns the result.
+// If s does not start with prefix it is returned unchanged.
+func stripPrefix(s, prefix string) string {
+	return strings.TrimPrefix(s, prefix)
+}
+
 // Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
 func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
+	// Build a (possibly prefix-stripped) request for validation, but keep
+	// the original so the downstream handler sees the un-modified path.
+	validationReq := makeRequestForValidation(r, options)
+
 	// Find route
-
-	r = makeRequestForValidation(r, options)
-
-	route, pathParams, err := router.FindRoute(r)
+	route, pathParams, err := router.FindRoute(validationReq)
 	if err != nil {
 		errOpts := ErrorHandlerOpts{
 			// MatchedRoute will be nil, as we've not matched a route we know about
@@ -197,7 +223,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 
 	// Validate request
 	requestValidationInput := &openapi3filter.RequestValidationInput{
-		Request:    r,
+		Request:    validationReq,
 		PathParams: pathParams,
 		Route:      route,
 	}
@@ -206,9 +232,9 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 		requestValidationInput.Options = &options.Options
 	}
 
-	err = openapi3filter.ValidateRequest(r.Context(), requestValidationInput)
+	err = openapi3filter.ValidateRequest(validationReq.Context(), requestValidationInput)
 	if err == nil {
-		// it's a valid request, so serve it
+		// it's a valid request, so serve it with the original request
 		next.ServeHTTP(w, r)
 		return
 	}
