@@ -74,6 +74,11 @@ type ErrorHandlerOptsMatchedRoute struct {
 // MultiErrorHandler is called when the OpenAPI filter returns an openapi3.MultiError (https://pkg.go.dev/github.com/getkin/kin-openapi/openapi3#MultiError)
 type MultiErrorHandler func(openapi3.MultiError) (int, error)
 
+// Skipper is a function that runs before any validation middleware, and determines whether the given request should skip any validation middleware
+//
+// Return `true` if the request should be skipped
+type Skipper func(r *http.Request) bool
+
 // Options allows configuring the OapiRequestValidator.
 type Options struct {
 	// Options contains any configuration for the underlying `openapi3filter`
@@ -103,6 +108,9 @@ type Options struct {
 	// Prefix allows (optionally) trimming a prefix from the API path.
 	// This may be useful if your API is routed to an internal path that is different from the OpenAPI specification.
 	Prefix string
+
+	// Skipper allows writing a function that runs before any middleware and determines whether the given request should skip any validation middleware
+	Skipper Skipper
 }
 
 // OapiRequestValidator Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, with a default set of configuration.
@@ -129,6 +137,11 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if options != nil && options.Skipper != nil && options.Skipper(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			if options == nil {
 				performRequestValidationForErrorHandler(next, w, r, router, options, http.Error)
 			} else if options.ErrorHandlerWithOpts != nil {
