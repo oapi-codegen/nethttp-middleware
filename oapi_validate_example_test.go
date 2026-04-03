@@ -1042,9 +1042,6 @@ paths:
 	}
 
 	skipperFunc := func(r *http.Request) bool {
-		// always consume the request body, because we're not following best practices
-		_, _ = io.ReadAll(r.Body)
-
 		// skip the undocumented healthcheck endpoint
 		if r.URL.Path == "/healthz" {
 			return true
@@ -1078,7 +1075,7 @@ paths:
 	logResponseBody(rr)
 
 	// ================================================================================
-	fmt.Println("# The skipper cannot consume the request body")
+	fmt.Println("# A request that is well-formed is passed through to the Handler")
 
 	req, err = http.NewRequest(http.MethodPost, "/resource", bytes.NewReader([]byte("Hello there")))
 	must(err)
@@ -1094,7 +1091,7 @@ paths:
 	// Output:
 	// # A request that is made to the undocumented healthcheck endpoint does not get validated
 	// Received an HTTP 200 response. Expected HTTP 200
-	// # The skipper cannot consume the request body
+	// # A request that is well-formed is passed through to the Handler
 	// POST /resource was called
 	// Request body: Hello there
 	// Received an HTTP 204 response. Expected HTTP 204
