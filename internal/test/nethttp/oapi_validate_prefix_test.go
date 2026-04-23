@@ -3,6 +3,7 @@ package gorilla
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -283,4 +284,123 @@ components:
 	rec := doGet(t, server, "http://example.com/api/resource")
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, called, "handler should have been called when auth passes")
+}
+
+// bodyReadableSpec defines a POST /resource with a required JSON body,
+// used to test that the handler can still read the body after validation.
+const bodyReadableSpec = `
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: TestServer
+paths:
+  /resource:
+    post:
+      operationId: createResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+              additionalProperties: false
+      responses:
+        '204':
+          description: No content
+`
+
+// TestPrefix_RequestBodyReadableByHandler_WithAndWithoutPrefix is a regression
+// test for https://github.com/oapi-codegen/nethttp-middleware/issues/69.
+//
+// When Prefix is set, makeRequestForValidation used to clone the request via
+// r.Clone(), which shallow-copies the Body. Validation then consumed the body
+// on the clone, leaving the original body empty for the downstream handler.
+func TestPrefix_RequestBodyReadableByHandler_WithAndWithoutPrefix(t *testing.T) {
+	spec, err := openapi3.NewLoader().LoadFromData([]byte(bodyReadableSpec))
+	require.NoError(t, err)
+	spec.Servers = nil
+
+	tests := []struct {
+		name        string
+		prefix      string
+		routePath   string
+		requestPath string
+	}{
+		{
+			name:        "without prefix",
+			prefix:      "",
+			routePath:   "/resource",
+			requestPath: "http://example.com/resource",
+		},
+		{
+			name:        "with prefix",
+			prefix:      "/api",
+			routePath:   "/api/resource",
+			requestPath: "http://example.com/api/resource",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc(tc.routePath, func(w http.ResponseWriter, r *http.Request) {
+				var payload struct {
+					Name string `json:"name"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					http.Error(w, "handler failed to decode body: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				assert.Equal(t, "Jamie", payload.Name)
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			mw := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+				Prefix: tc.prefix,
+			})
+			server := mw(mux)
+
+			body := map[string]string{"name": "Jamie"}
+			rec := doPost(t, server, tc.requestPath, body)
+			assert.Equal(t, http.StatusNoContent, rec.Code, "body: %s", rec.Body.String())
+		})
+	}
+}
+
+// TestPrefix_RequestBodyReadableByHandler_ErrorHandlerWithOpts is the same
+// regression test but exercising the ErrorHandlerWithOpts code path.
+func TestPrefix_RequestBodyReadableByHandler_ErrorHandlerWithOpts(t *testing.T) {
+	spec, err := openapi3.NewLoader().LoadFromData([]byte(bodyReadableSpec))
+	require.NoError(t, err)
+	spec.Servers = nil
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/resource", func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "handler failed to decode body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, "Jamie", payload.Name)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mw := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+		Prefix: "/api",
+		ErrorHandlerWithOpts: func(ctx context.Context, err error, w http.ResponseWriter, r *http.Request, opts middleware.ErrorHandlerOpts) {
+			http.Error(w, err.Error(), opts.StatusCode)
+		},
+	})
+	server := mw(mux)
+
+	body := map[string]string{"name": "Jamie"}
+	rec := doPost(t, server, "http://example.com/api/resource", body)
+	assert.Equal(t, http.StatusNoContent, rec.Code, "body: %s", rec.Body.String())
 }
