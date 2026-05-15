@@ -341,7 +341,7 @@ func doValidateRequest(r *http.Request, router routers.Router, options *Options)
 			// Split up the verbose error by lines and return the first one
 			// openapi errors seem to be multi-line with a decent message on the first
 			errorLines := strings.Split(e.Error(), "\n")
-			return http.StatusBadRequest, fmt.Errorf(errorLines[0])
+			return http.StatusBadRequest, errors.New(errorLines[0])
 		case *openapi3filter.SecurityRequirementsError:
 			return http.StatusUnauthorized, err
 		default:
