@@ -30,3 +30,8 @@ test:
 tidy:
 	@echo "tidy..."
 	git ls-files go.mod '**/*go.mod' -z | xargs -0 -I{} bash -xc 'cd $$(dirname {}) && go mod tidy'
+
+tidy-ci:
+	@echo "tidy..."
+	git ls-files go.mod '**/*go.mod' -z | xargs -0 -I{} bash -xc 'cd $$(dirname {}) && go mod tidy'
+	git diff --exit-code --patch
