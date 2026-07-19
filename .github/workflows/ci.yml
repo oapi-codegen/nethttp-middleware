@@ -9,4 +9,4 @@ jobs:
   build:
     uses: oapi-codegen/actions/.github/workflows/ci.yml@0b10ad68a53148bd29896be82ad92027b35507a3 # v0.8.0
     with:
-      lint_versions: '["1.25"]'
+      lint_versions: '["1.26"]'
