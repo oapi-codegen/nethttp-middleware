@@ -68,6 +68,14 @@ server := use(router, mw)
 // now all HTTP routes will be handled by the middleware, and any requests that are invalid will be rejected
 ```
 
+### Keeping the validated request body
+
+The middleware enables kin-openapi's [`openapi3filter.Options.KeepValidatedValue`](https://pkg.go.dev/github.com/getkin/kin-openapi/openapi3filter#Options) by default. After a request body passes validation, the `r.Body` that your handlers receive is still readable as before, and also has a `ValidatedValue() any` method returning the value that was validated. An [`oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen) strict server can bind that value instead of decoding the body a second time, so the request it handles is the request that was validated (for example, `encoding/json`'s case-insensitive field matching can no longer let `{"role":"user","ROLE":"admin"}` validate as `role: user` but bind as `Role: "admin"`).
+
+To turn this off, for instance to limit memory retention for very large request bodies, set `Options.DiscardValidatedValue`, which takes precedence over `Options.Options.KeepValidatedValue`.
+
+Any middleware placed _after_ the validator that replaces `r.Body` (decompression, size limiting, logging wrappers, ...) hides the validated value from the handler, so such middleware belongs _before_ the validator.
+
 ## FAQs
 
 ### Which HTTP servers should this work with?

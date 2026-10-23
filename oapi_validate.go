@@ -111,6 +111,30 @@ type Options struct {
 
 	// Skipper allows writing a function that runs before any middleware and determines whether the given request should skip any validation middleware
 	Skipper Skipper
+
+	// DiscardValidatedValue turns off openapi3filter.Options.KeepValidatedValue,
+	// which this middleware enables by default. With it enabled, the request body
+	// seen by handlers exposes the value that was validated through a
+	// ValidatedValue() method, so a handler (for example an oapi-codegen strict
+	// server) can bind that value instead of decoding the body a second time.
+	// Set this to drop the decoded value after validation, for instance to limit
+	// memory retention for very large request bodies.
+	//
+	// Options.Options.KeepValidatedValue is overridden by this setting.
+	DiscardValidatedValue bool
+}
+
+// filterOptions returns the openapi3filter.Options to validate requests with.
+// It returns a copy of options.Options, so the caller's struct is never
+// modified, with KeepValidatedValue set unless DiscardValidatedValue is.
+func filterOptions(options *Options) *openapi3filter.Options {
+	if options == nil {
+		return &openapi3filter.Options{KeepValidatedValue: true}
+	}
+
+	opts := options.Options
+	opts.KeepValidatedValue = !options.DiscardValidatedValue
+	return &opts
 }
 
 // OapiRequestValidator Creates the middleware to validate that incoming requests match the given OpenAPI 3.x spec, with a default set of configuration.
@@ -135,6 +159,8 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 		panic(err)
 	}
 
+	filterOpts := filterOptions(options)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if options != nil && options.Skipper != nil && options.Skipper(r) {
@@ -143,23 +169,23 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 			}
 
 			if options == nil {
-				performRequestValidationForErrorHandler(next, w, r, router, options, http.Error)
+				performRequestValidationForErrorHandler(next, w, r, router, options, filterOpts, http.Error)
 			} else if options.ErrorHandlerWithOpts != nil {
-				performRequestValidationForErrorHandlerWithOpts(next, w, r, router, options)
+				performRequestValidationForErrorHandlerWithOpts(next, w, r, router, options, filterOpts)
 			} else if options.ErrorHandler != nil {
-				performRequestValidationForErrorHandler(next, w, r, router, options, options.ErrorHandler)
+				performRequestValidationForErrorHandler(next, w, r, router, options, filterOpts, options.ErrorHandler)
 			} else {
 				// NOTE that this shouldn't happen, but let's be sure that we always end up calling the default error handler if no other handler is defined
-				performRequestValidationForErrorHandler(next, w, r, router, options, http.Error)
+				performRequestValidationForErrorHandler(next, w, r, router, options, filterOpts, http.Error)
 			}
 		})
 	}
 
 }
 
-func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options, errorHandler ErrorHandler) {
+func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options, errorHandler ErrorHandler) {
 	// validate request
-	statusCode, err := validateRequest(r, router, options)
+	statusCode, err := validateRequest(r, router, options, filterOpts)
 	if err == nil {
 		// serve
 		next.ServeHTTP(w, r)
@@ -222,7 +248,7 @@ func stripPrefix(s, prefix string) string {
 }
 
 // Note that this is an inline-and-modified version of `validateRequest`, with a simplified control flow and providing full access to the `error` for the `ErrorHandlerWithOpts` function.
-func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options) {
+func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) {
 	var route *routers.Route
 	var pathParams map[string]string
 	var validationErr error
@@ -241,10 +267,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 			Request:    r,
 			PathParams: pathParams,
 			Route:      route,
-		}
-
-		if options != nil {
-			requestValidationInput.Options = &options.Options
+			Options:    filterOpts,
 		}
 
 		validationErr = openapi3filter.ValidateRequest(r.Context(), requestValidationInput)
@@ -293,12 +316,12 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
-func validateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
+func validateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (int, error) {
 	var statusCode int
 	var validationErr error
 
 	withPrefixStripped(r, options, func() {
-		statusCode, validationErr = doValidateRequest(r, router, options)
+		statusCode, validationErr = doValidateRequest(r, router, options, filterOpts)
 	})
 
 	return statusCode, validationErr
@@ -306,7 +329,7 @@ func validateRequest(r *http.Request, router routers.Router, options *Options) (
 
 // doValidateRequest performs the actual validation, called within
 // withPrefixStripped so the prefix is already removed from r's path.
-func doValidateRequest(r *http.Request, router routers.Router, options *Options) (int, error) {
+func doValidateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (int, error) {
 	// Find route
 	route, pathParams, err := router.FindRoute(r)
 	if err != nil {
@@ -323,10 +346,7 @@ func doValidateRequest(r *http.Request, router routers.Router, options *Options)
 		PathParams:  pathParams,
 		QueryParams: r.URL.Query(),
 		Route:       route,
-	}
-
-	if options != nil {
-		requestValidationInput.Options = &options.Options
+		Options:     filterOpts,
 	}
 
 	if err := openapi3filter.ValidateRequest(r.Context(), requestValidationInput); err != nil {
