@@ -2,7 +2,7 @@ module github.com/oapi-codegen/nethttp-middleware
 
 go 1.25.0
 
-require github.com/getkin/kin-openapi v0.149.0
+require github.com/getkin/kin-openapi v0.152.0
 
 require (
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
