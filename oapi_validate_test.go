@@ -259,3 +259,99 @@ func TestKeepValidatedValue(t *testing.T) {
 		}
 	})
 }
+
+const authRequestSpec = `
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: TestServer
+paths:
+  /protected:
+    get:
+      operationId: getProtected
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No content
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+`
+
+type authContextKey struct{}
+
+// getThroughValidator sends a GET through the middleware and records what the
+// handler saw in the request context.
+func getThroughValidator(t *testing.T, options *Options) (*httptest.ResponseRecorder, any, string) {
+	t.Helper()
+
+	spec, err := openapi3.NewLoader().LoadFromData([]byte(authRequestSpec))
+	if err != nil {
+		t.Fatalf("failed to load spec: %v", err)
+	}
+
+	var seen any
+	var seenPath string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Context().Value(authContextKey{})
+		seenPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mw := OapiRequestValidatorWithOptions(spec, options)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	mw(handler).ServeHTTP(rec, req)
+
+	return rec, seen, seenPath
+}
+
+func TestAuthenticationFuncRequestPropagation(t *testing.T) {
+	// The AuthenticationFunc attaches the subject to the request context by
+	// replacing RequestValidationInput.Request, the only channel available.
+	authFunc := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
+		r := input.RequestValidationInput.Request
+		input.RequestValidationInput.Request = r.WithContext(context.WithValue(r.Context(), authContextKey{}, "subject-123"))
+		return nil
+	}
+
+	t.Run("default error handler path", func(t *testing.T) {
+		rec, seen, seenPath := getThroughValidator(t, &Options{
+			Options: openapi3filter.Options{AuthenticationFunc: authFunc},
+		})
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("expected HTTP %d, got %d: %s", http.StatusNoContent, rec.Code, rec.Body.String())
+		}
+		if seen != "subject-123" {
+			t.Errorf("expected the handler to see the context value set by AuthenticationFunc, got %v", seen)
+		}
+		if seenPath != "/protected" {
+			t.Errorf("expected the handler to see the original path, got %q", seenPath)
+		}
+	})
+
+	t.Run("ErrorHandlerWithOpts path", func(t *testing.T) {
+		rec, seen, seenPath := getThroughValidator(t, &Options{
+			Options: openapi3filter.Options{AuthenticationFunc: authFunc},
+			ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, _ *http.Request, opts ErrorHandlerOpts) {
+				http.Error(w, err.Error(), opts.StatusCode)
+			},
+		})
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("expected HTTP %d, got %d: %s", http.StatusNoContent, rec.Code, rec.Body.String())
+		}
+		if seen != "subject-123" {
+			t.Errorf("expected the handler to see the context value set by AuthenticationFunc, got %v", seen)
+		}
+		if seenPath != "/protected" {
+			t.Errorf("expected the handler to see the original path, got %q", seenPath)
+		}
+	})
+}
