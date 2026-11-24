@@ -185,10 +185,10 @@ func OapiRequestValidatorWithOptions(spec *openapi3.T, options *Options) func(ne
 
 func performRequestValidationForErrorHandler(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options, errorHandler ErrorHandler) {
 	// validate request
-	statusCode, err := validateRequest(r, router, options, filterOpts)
+	validatedReq, statusCode, err := validateRequest(r, router, options, filterOpts)
 	if err == nil {
 		// serve
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, validatedReq)
 		return
 	}
 
@@ -251,6 +251,7 @@ func stripPrefix(s, prefix string) string {
 func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.ResponseWriter, r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) {
 	var route *routers.Route
 	var pathParams map[string]string
+	var requestValidationInput *openapi3filter.RequestValidationInput
 	var validationErr error
 
 	// Temporarily strip the prefix for route finding and validation,
@@ -263,7 +264,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 			return
 		}
 
-		requestValidationInput := &openapi3filter.RequestValidationInput{
+		requestValidationInput = &openapi3filter.RequestValidationInput{
 			Request:    r,
 			PathParams: pathParams,
 			Route:      route,
@@ -290,7 +291,7 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 	}
 
 	if validationErr == nil {
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, validatedRequest(r, requestValidationInput))
 		return
 	}
 
@@ -314,30 +315,47 @@ func performRequestValidationForErrorHandlerWithOpts(next http.Handler, w http.R
 	options.ErrorHandlerWithOpts(r.Context(), theErr, w, r, errOpts)
 }
 
+// validatedRequest returns the request that should be passed on to the next
+// handler after successful validation. An AuthenticationFunc may replace
+// RequestValidationInput.Request, for example to attach claims with
+// WithContext; that replacement request, including its context and any body
+// left by Options.KeepValidatedValue, must reach the handler or the values are
+// silently dropped. RequestURI is a plain field rather than part of the shared
+// URL, so the restored value is copied onto the replacement after prefix
+// handling.
+func validatedRequest(r *http.Request, requestValidationInput *openapi3filter.RequestValidationInput) *http.Request {
+	if requestValidationInput == nil || requestValidationInput.Request == nil || requestValidationInput.Request == r {
+		return r
+	}
+	requestValidationInput.Request.RequestURI = r.RequestURI
+	return requestValidationInput.Request
+}
+
 // validateRequest is called from the middleware above and actually does the work
 // of validating a request.
-func validateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (int, error) {
+func validateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (*http.Request, int, error) {
 	var statusCode int
 	var validationErr error
+	var requestValidationInput *openapi3filter.RequestValidationInput
 
 	withPrefixStripped(r, options, func() {
-		statusCode, validationErr = doValidateRequest(r, router, options, filterOpts)
+		requestValidationInput, statusCode, validationErr = doValidateRequest(r, router, options, filterOpts)
 	})
 
-	return statusCode, validationErr
+	return validatedRequest(r, requestValidationInput), statusCode, validationErr
 }
 
 // doValidateRequest performs the actual validation, called within
 // withPrefixStripped so the prefix is already removed from r's path.
-func doValidateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (int, error) {
+func doValidateRequest(r *http.Request, router routers.Router, options *Options, filterOpts *openapi3filter.Options) (*openapi3filter.RequestValidationInput, int, error) {
 	// Find route
 	route, pathParams, err := router.FindRoute(r)
 	if err != nil {
 		if errors.Is(err, routers.ErrMethodNotAllowed) {
-			return http.StatusMethodNotAllowed, err
+			return nil, http.StatusMethodNotAllowed, err
 		}
 
-		return http.StatusNotFound, err // We failed to find a matching route for the request.
+		return nil, http.StatusNotFound, err // We failed to find a matching route for the request.
 	}
 
 	// Validate request
@@ -353,7 +371,8 @@ func doValidateRequest(r *http.Request, router routers.Router, options *Options,
 		me := openapi3.MultiError{}
 		if errors.As(err, &me) {
 			errFunc := getMultiErrorHandlerFromOptions(options)
-			return errFunc(me)
+			statusCode, meErr := errFunc(me)
+			return nil, statusCode, meErr
 		}
 
 		switch e := err.(type) {
@@ -362,17 +381,17 @@ func doValidateRequest(r *http.Request, router routers.Router, options *Options,
 			// Split up the verbose error by lines and return the first one
 			// openapi errors seem to be multi-line with a decent message on the first
 			errorLines := strings.Split(e.Error(), "\n")
-			return http.StatusBadRequest, errors.New(errorLines[0])
+			return nil, http.StatusBadRequest, errors.New(errorLines[0])
 		case *openapi3filter.SecurityRequirementsError:
-			return http.StatusUnauthorized, err
+			return nil, http.StatusUnauthorized, err
 		default:
 			// This should never happen today, but if our upstream code changes,
 			// we don't want to crash the server, so handle the unexpected error.
-			return http.StatusInternalServerError, fmt.Errorf("error validating route: %s", err.Error())
+			return nil, http.StatusInternalServerError, fmt.Errorf("error validating route: %s", err.Error())
 		}
 	}
 
-	return http.StatusOK, nil
+	return requestValidationInput, http.StatusOK, nil
 }
 
 // attempt to get the MultiErrorHandler from the options. If it is not set,
